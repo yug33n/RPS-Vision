@@ -511,11 +511,9 @@ void ArenaUI::render_opponent_card() {
     ImGui::Combo("##Commentator", &preview_commentator_idx_, commentators, IM_ARRAYSIZE(commentators));
 
     bool auto_next = engine_.auto_next_round();
-    if (ImGui::Checkbox("Auto-Next", &auto_next)) {
+    if (ImGui::Checkbox("Auto-Next Round", &auto_next)) {
         engine_.set_auto_next_round(auto_next);
     }
-    ImGui::SameLine();
-    ImGui::Checkbox("Voice TTS", &config_.tts_enabled);
 
     const bool active = (engine_.state() == game::GameState::Countdown ||
                          engine_.state() == game::GameState::Capture);
