@@ -3,6 +3,7 @@
 #include "ui/ArenaUI.hpp"
 #include "ui/Theme.hpp"
 #include "vision/CameraCapture.hpp"
+#include "vision/HandTracker.hpp"
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -91,7 +92,10 @@ int main() {
     camera.set_mirror(config.mirror_camera);
     camera.start(config.camera_index, config.camera_width, config.camera_height, config.camera_fps);
 
-    rps::ui::ArenaUI arena_ui(config, camera);
+    rps::vision::HandTracker hand_tracker;
+    (void)hand_tracker.init(config.palm_model_path, config.landmark_model_path);
+
+    rps::ui::ArenaUI arena_ui(config, camera, hand_tracker);
 
     const rps::ui::ThemePalette& pal = rps::ui::palette();
     while (!glfwWindowShouldClose(window)) {
