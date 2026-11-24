@@ -254,7 +254,11 @@ struct HandTracker::Impl {
             const std::size_t count = info.GetElementCount();
             const float* ptr = outputs[i].GetTensorData<float>();
             if (count == 63) {
-                lm_ptr = ptr;
+                const bool is_world = (i < landmark_out_names.size()) &&
+                    (landmark_out_names[i].find("world") != std::string::npos);
+                if (!lm_ptr && !is_world) {
+                    lm_ptr = ptr;
+                }
             } else if (count == 1) {
                 const float val = (ptr[0] < 0.0f || ptr[0] > 1.0f) ? sigmoid(ptr[0]) : ptr[0];
                 if (i == 1) {
