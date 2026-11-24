@@ -79,8 +79,8 @@ int main() {
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.IniFilename = nullptr;
 
-    rps::ui::apply_esports_theme();
-    rps::ui::load_fonts(config.font_path, 18.0f);
+    rps::ui::apply_esports_theme(vidmode ? std::max(1.0f, static_cast<float>(vidmode->height) / 1080.0f) : 1.0f);
+    rps::ui::load_fonts(config.font_path, 19.0f);
 
     if (!ImGui_ImplGlfw_InitForOpenGL(window, true)) {
         rps::core::Logger::error("Failed to initialize ImGui GLFW backend.");

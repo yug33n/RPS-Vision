@@ -53,6 +53,7 @@ public:
 private:
     void cv_worker_loop(std::stop_token stop_token);
     void render_top_bar();
+    void render_left_column(float width, float height);
     void render_webcam_arena(float width, float height);
     void render_sidebar(float width, float height);
     void render_opponent_card();
