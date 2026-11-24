@@ -177,13 +177,30 @@ ArenaUI::ArenaUI(
     core::AppConfig& config,
     vision::CameraCapture& camera,
     vision::HandTracker& tracker,
-    game::GameEngine& engine
+    game::GameEngine& engine,
+    ai::TemplateCommentator& template_commentator,
+    ai::LlamaCommentator& llama_commentator,
+    audio::AudioEngine& audio_engine
 )
     : config_(config)
     , camera_(camera)
     , tracker_(tracker)
     , engine_(engine)
-    , preview_difficulty_idx_(static_cast<int>(engine.difficulty())) {
+    , template_commentator_(template_commentator)
+    , llama_commentator_(llama_commentator)
+    , audio_engine_(audio_engine)
+    , preview_difficulty_idx_(static_cast<int>(engine.difficulty()))
+    , preview_commentator_idx_(
+          (config.commentator_mode == "LLM" && llama_commentator.is_available()) ? 1 : 0)
+    , language_idx_(config.ui_language == "ru" ? 1 : 0) {
+    chat_log_.push_back(ai::CommentatorMessage{
+        .author = "SYSTEM",
+        .text = llama_commentator_.is_available()
+            ? "Arena ready. Local GGUF LLM and Template Engine are online."
+            : "Arena ready. Template Engine active (place models/commentator.gguf for Local LLM).",
+        .timestamp = "INIT",
+        .is_streaming = false
+    });
     refresh_devices();
     cv_worker_ = std::jthread([this](std::stop_token st) {
         cv_worker_loop(std::move(st));
@@ -240,7 +257,61 @@ void ArenaUI::render() {
         std::scoped_lock lock(cv_mutex_);
         current_gesture = latest_gesture_;
     }
-    (void)engine_.update(current_gesture);
+
+    const auto completed = engine_.update(current_gesture);
+
+    if (engine_.state() == game::GameState::Countdown || engine_.state() == game::GameState::Capture) {
+        const std::string lbl = engine_.countdown_label();
+        if (lbl != last_countdown_label_) {
+            last_countdown_label_ = lbl;
+            audio_engine_.play(lbl == "SHOOT!" ? audio::SoundEffect::Shoot : audio::SoundEffect::Tick);
+        }
+    } else {
+        last_countdown_label_.clear();
+    }
+
+    ai::ICommentator& active_commentator = (preview_commentator_idx_ == 1 && llama_commentator_.is_available())
+        ? static_cast<ai::ICommentator&>(llama_commentator_)
+        : static_cast<ai::ICommentator&>(template_commentator_);
+
+    if (completed.has_value()) {
+        const auto& rec = *completed;
+        switch (rec.result) {
+            case game::RoundResult::PlayerWin:   audio_engine_.play(audio::SoundEffect::Win); break;
+            case game::RoundResult::AiWin:       audio_engine_.play(audio::SoundEffect::Lose); break;
+            case game::RoundResult::Draw:        audio_engine_.play(audio::SoundEffect::Draw); break;
+            case game::RoundResult::InvalidMove: audio_engine_.play(audio::SoundEffect::Invalid); break;
+        }
+
+        if (rec.player_move != game::Move::None && rec.player_move == last_player_move_) {
+            ++consecutive_same_move_;
+        } else {
+            last_player_move_ = rec.player_move;
+            consecutive_same_move_ = (rec.player_move != game::Move::None) ? 1 : 0;
+        }
+        consecutive_draws_ = (rec.result == game::RoundResult::Draw) ? (consecutive_draws_ + 1) : 0;
+
+        const ai::CommentaryContext ctx{
+            .round = rec,
+            .stats = engine_.stats(),
+            .consecutive_same_player_move = consecutive_same_move_,
+            .consecutive_draws = consecutive_draws_,
+            .language = (language_idx_ == 1) ? ai::Language::Ru : ai::Language::En
+        };
+        active_commentator.request_commentary(ctx);
+    }
+
+    if (auto msg = active_commentator.poll_update()) {
+        if (!chat_log_.empty() && chat_log_.back().is_streaming && msg->author == chat_log_.back().author) {
+            chat_log_.back() = std::move(*msg);
+        } else {
+            chat_log_.push_back(std::move(*msg));
+            if (chat_log_.size() > 60) {
+                chat_log_.erase(chat_log_.begin());
+            }
+        }
+        chat_scroll_to_bottom_ = true;
+    }
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -492,7 +563,7 @@ void ArenaUI::render_sidebar(float width, float height) {
 
 void ArenaUI::render_opponent_card() {
     const ThemePalette& p = palette();
-    ImGui::BeginChild("OpponentCard", ImVec2(0.0f, 185.0f), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("OpponentCard", ImVec2(0.0f, 222.0f), ImGuiChildFlags_Borders);
     ImGui::TextColored(p.accent_cyan, "AI OPPONENT & CONTROLS");
     ImGui::Separator();
 
@@ -506,13 +577,34 @@ void ArenaUI::render_opponent_card() {
         else config_.ai_difficulty = "Markov";
     }
 
-    const char* commentators[] = {"Template Engine (Offline)", "Local LLM (GGUF)"};
+    const char* commentators[] = {
+        "Template Engine (Offline)",
+        llama_commentator_.is_available() ? "Local LLM (GGUF Ready)" : "Local LLM (No GGUF -> Fallback)"
+    };
+    ImGui::SetNextItemWidth(-90.0f);
+    if (ImGui::Combo("##Commentator", &preview_commentator_idx_, commentators, IM_ARRAYSIZE(commentators))) {
+        config_.commentator_mode = (preview_commentator_idx_ == 1) ? "LLM" : "Template";
+    }
+    ImGui::SameLine();
+    const char* langs[] = {"EN", "RU"};
     ImGui::SetNextItemWidth(-1.0f);
-    ImGui::Combo("##Commentator", &preview_commentator_idx_, commentators, IM_ARRAYSIZE(commentators));
+    if (ImGui::Combo("##Lang", &language_idx_, langs, IM_ARRAYSIZE(langs))) {
+        config_.ui_language = (language_idx_ == 1) ? "ru" : "en";
+    }
 
     bool auto_next = engine_.auto_next_round();
-    if (ImGui::Checkbox("Auto-Next Round", &auto_next)) {
+    if (ImGui::Checkbox("Auto-Next", &auto_next)) {
         engine_.set_auto_next_round(auto_next);
+    }
+    ImGui::SameLine();
+    bool muted = audio_engine_.is_muted();
+    if (ImGui::Checkbox("Mute", &muted)) {
+        audio_engine_.set_muted(muted);
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::SliderFloat("##SfxVol", &config_.sfx_volume, 0.0f, 1.0f, "SFX %.0f%%")) {
+        audio_engine_.set_volume(config_.sfx_volume);
     }
 
     const bool active = (engine_.state() == game::GameState::Countdown ||
@@ -534,16 +626,26 @@ void ArenaUI::render_chat_card(float height) {
     const ThemePalette& p = palette();
     ImGui::BeginChild("CommentatorChatCard", ImVec2(0.0f, height), ImGuiChildFlags_Borders);
     ImGui::TextColored(p.accent_purple, "AI COMMENTATOR CHAT");
+    if (llama_commentator_.is_busy()) {
+        ImGui::SameLine();
+        ImGui::TextColored(p.accent_cyan, "(typing...)");
+    }
     ImGui::Separator();
 
     ImGui::BeginChild("ChatScroll", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None);
-    ImGui::TextColored(p.accent_cyan, "[SYSTEM]");
-    ImGui::SameLine();
-    ImGui::TextWrapped("Camera Arena online. Local AI commentary engine will activate in Milestone 5.");
-    ImGui::Spacing();
-    ImGui::TextColored(p.text_muted, "[STATUS]");
-    ImGui::SameLine();
-    ImGui::TextWrapped("Select your webcam above and verify smooth mirrored video capture.");
+    for (const auto& msg : chat_log_) {
+        const ImVec4 tag_col = (msg.author == "LOCAL-LLM") ? p.accent_purple : p.accent_cyan;
+        ImGui::TextColored(p.text_muted, "[%s]", msg.timestamp.c_str());
+        ImGui::SameLine();
+        ImGui::TextColored(tag_col, "[%s]", msg.author.c_str());
+        ImGui::SameLine();
+        ImGui::TextWrapped("%s", msg.text.c_str());
+        ImGui::Spacing();
+    }
+    if (chat_scroll_to_bottom_) {
+        ImGui::SetScrollHereY(1.0f);
+        chat_scroll_to_bottom_ = false;
+    }
     ImGui::EndChild();
 
     ImGui::EndChild();
