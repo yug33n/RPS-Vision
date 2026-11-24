@@ -3,9 +3,13 @@
 #include "core/AppConfig.hpp"
 #include "ui/TextureManager.hpp"
 #include "vision/CameraCapture.hpp"
+#include "vision/GestureClassifier.hpp"
+#include "vision/HandTracker.hpp"
 
 #include <cstdint>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace rps::ui {
@@ -15,7 +19,15 @@ namespace rps::ui {
  */
 class ArenaUI {
 public:
-    ArenaUI(core::AppConfig& config, vision::CameraCapture& camera);
+    ArenaUI(
+        core::AppConfig& config,
+        vision::CameraCapture& camera,
+        vision::HandTracker& tracker
+    );
+    ~ArenaUI();
+
+    ArenaUI(const ArenaUI&) = delete;
+    ArenaUI& operator=(const ArenaUI&) = delete;
 
     /**
      * @brief Refreshes the list of available webcam devices.
@@ -28,6 +40,7 @@ public:
     void render();
 
 private:
+    void cv_worker_loop(std::stop_token stop_token);
     void render_top_bar();
     void render_webcam_arena(float width, float height);
     void render_sidebar(float width, float height);
@@ -37,10 +50,17 @@ private:
 
     core::AppConfig& config_;
     vision::CameraCapture& camera_;
+    vision::HandTracker& tracker_;
+    vision::GestureClassifier classifier_;
     TextureManager camera_texture_;
 
     vision::CapturedFrame latest_frame_;
     std::uint64_t last_sequence_ = 0;
+
+    std::jthread cv_worker_;
+    mutable std::mutex cv_mutex_;
+    vision::HandTrackingResult latest_tracking_;
+    vision::GestureResult latest_gesture_;
 
     std::vector<vision::CameraDevice> devices_;
     int preview_difficulty_idx_ = 1;

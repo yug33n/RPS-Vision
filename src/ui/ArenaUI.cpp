@@ -2,16 +2,71 @@
 #include "ui/Theme.hpp"
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <format>
 #include <imgui.h>
 #include <string>
+#include <utility>
 
 namespace rps::ui {
 
 namespace {
 
+constexpr std::array<std::pair<int, int>, 21> kHandBoneConnections = {{
+    {0, 1}, {1, 2}, {2, 3}, {3, 4},       // Thumb
+    {0, 5}, {5, 6}, {6, 7}, {7, 8},       // Index
+    {0, 9}, {9, 10}, {10, 11}, {11, 12},  // Middle
+    {0, 13}, {13, 14}, {14, 15}, {15, 16},// Ring
+    {0, 17}, {17, 18}, {18, 19}, {19, 20},// Pinky
+    {5, 9}                                // Palm bridge (index-middle)
+}};
+
 ImU32 to_u32(const ImVec4& c) noexcept {
     return ImGui::ColorConvertFloat4ToU32(c);
+}
+
+void draw_hand_skeleton(
+    ImDrawList* draw_list,
+    const ImVec2& rect_min,
+    const ImVec2& rect_size,
+    const vision::HandTrackingResult& tracking,
+    const vision::GestureResult& gesture,
+    const ThemePalette& p
+) {
+    if (!tracking.hand_detected) {
+        return;
+    }
+
+    const ImVec4 bone_vec = (gesture.gesture != vision::HandGesture::Unknown)
+        ? p.accent_cyan
+        : p.status_amber;
+    const ImU32 glow_col = to_u32(ImVec4(bone_vec.x, bone_vec.y, bone_vec.z, 0.30f));
+    const ImU32 bone_col = to_u32(bone_vec);
+    const ImU32 joint_col = to_u32(p.text_primary);
+    const ImU32 joint_ring = to_u32(p.bg_canvas);
+
+    auto to_screen = [&](const vision::LandmarkPoint& pt) -> ImVec2 {
+        return ImVec2(
+            rect_min.x + pt.x * rect_size.x,
+            rect_min.y + pt.y * rect_size.y
+        );
+    };
+
+    for (const auto& [a_idx, b_idx] : kHandBoneConnections) {
+        const ImVec2 pa = to_screen(tracking.landmarks[static_cast<std::size_t>(a_idx)]);
+        const ImVec2 pb = to_screen(tracking.landmarks[static_cast<std::size_t>(b_idx)]);
+        draw_list->AddLine(pa, pb, glow_col, 6.0f);
+        draw_list->AddLine(pa, pb, bone_col, 2.2f);
+    }
+
+    for (std::size_t i = 0; i < tracking.landmarks.size(); ++i) {
+        const ImVec2 pt = to_screen(tracking.landmarks[i]);
+        const bool is_tip = (i == 4 || i == 8 || i == 12 || i == 16 || i == 20);
+        const float radius = is_tip ? 5.5f : 3.8f;
+        draw_list->AddCircleFilled(pt, radius + 1.5f, joint_ring);
+        draw_list->AddCircleFilled(pt, radius, is_tip ? bone_col : joint_col);
+    }
 }
 
 void draw_corner_reticle(ImDrawList* draw_list, ImVec2 min_pt, ImVec2 max_pt, ImU32 color) {
@@ -44,10 +99,46 @@ void draw_status_pill(const char* label, const ImVec4& accent_color) {
 
 } // namespace
 
-ArenaUI::ArenaUI(core::AppConfig& config, vision::CameraCapture& camera)
+ArenaUI::ArenaUI(
+    core::AppConfig& config,
+    vision::CameraCapture& camera,
+    vision::HandTracker& tracker
+)
     : config_(config)
-    , camera_(camera) {
+    , camera_(camera)
+    , tracker_(tracker) {
     refresh_devices();
+    cv_worker_ = std::jthread([this](std::stop_token st) {
+        cv_worker_loop(std::move(st));
+    });
+}
+
+ArenaUI::~ArenaUI() {
+    if (cv_worker_.joinable()) {
+        cv_worker_.request_stop();
+        cv_worker_.join();
+    }
+}
+
+void ArenaUI::cv_worker_loop(std::stop_token stop_token) {
+    vision::CapturedFrame frame;
+    std::uint64_t processed_seq = 0;
+
+    while (!stop_token.stop_requested()) {
+        if (tracker_.status() != vision::TrackerStatus::Ready ||
+            !camera_.try_get_latest_frame(frame, processed_seq)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(8));
+            continue;
+        }
+
+        processed_seq = frame.sequence;
+        const vision::HandTrackingResult tracking = tracker_.process_frame(frame.bgr, frame.sequence);
+        const vision::GestureResult gesture = classifier_.classify(tracking);
+
+        std::scoped_lock lock(cv_mutex_);
+        latest_tracking_ = tracking;
+        latest_gesture_ = gesture;
+    }
 }
 
 void ArenaUI::refresh_devices() {
@@ -194,10 +285,40 @@ void ArenaUI::render_webcam_arena(float width, float height) {
         draw_status_pill("CAMERA STOPPED", p.text_muted);
     }
 
-    const char* cv_badge = "GESTURE: CV TRACKER PENDING";
-    const float badge_w = ImGui::CalcTextSize(cv_badge).x + 24.0f;
+    vision::HandTrackingResult tracking;
+    vision::GestureResult gesture;
+    {
+        std::scoped_lock lock(cv_mutex_);
+        tracking = latest_tracking_;
+        gesture = latest_gesture_;
+    }
+
+    const vision::TrackerStatus tracker_status = tracker_.status();
+    std::string cv_badge;
+    ImVec4 cv_badge_color = p.accent_purple;
+    if (tracker_status == vision::TrackerStatus::ModelsMissing) {
+        cv_badge = "CV: MODELS MISSING";
+        cv_badge_color = p.status_amber;
+    } else if (tracker_status == vision::TrackerStatus::Error) {
+        cv_badge = "CV: OFFLINE";
+        cv_badge_color = p.status_red;
+    } else if (tracking.hand_detected) {
+        const int pct = static_cast<int>(gesture.confidence * 100.0f);
+        cv_badge = std::format("{} [{}%] ({:.1f}ms)",
+                               vision::GestureClassifier::to_string(gesture.gesture),
+                               pct,
+                               tracking.inference_ms);
+        cv_badge_color = (gesture.gesture != vision::HandGesture::Unknown)
+            ? p.accent_cyan
+            : p.status_amber;
+    } else {
+        cv_badge = "NO HAND DETECTED";
+        cv_badge_color = p.text_muted;
+    }
+
+    const float badge_w = ImGui::CalcTextSize(cv_badge.c_str()).x + 24.0f;
     ImGui::SameLine(std::max(0.0f, ImGui::GetWindowContentRegionMax().x - badge_w));
-    draw_status_pill(cv_badge, p.accent_purple);
+    draw_status_pill(cv_badge.c_str(), cv_badge_color);
 
     ImGui::Separator();
 
@@ -222,6 +343,17 @@ void ArenaUI::render_webcam_arena(float width, float height) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         dl->AddRect(screen_min, screen_max, to_u32(p.border_subtle), 4.0f, 0, 1.0f);
         draw_corner_reticle(dl, screen_min, screen_max, to_u32(p.accent_cyan));
+        draw_hand_skeleton(dl, screen_min, draw_size, tracking, gesture, p);
+
+        if (tracker_status == vision::TrackerStatus::ModelsMissing ||
+            tracker_status == vision::TrackerStatus::Error) {
+            const std::string banner = tracker_.status_message();
+            const ImVec2 b_min(screen_min.x + 12.0f, screen_max.y - 44.0f);
+            const ImVec2 b_max(screen_max.x - 12.0f, screen_max.y - 12.0f);
+            dl->AddRectFilled(b_min, b_max, IM_COL32(25, 18, 12, 215), 6.0f);
+            dl->AddRect(b_min, b_max, to_u32(p.status_amber), 6.0f, 0, 1.5f);
+            dl->AddText(ImVec2(b_min.x + 10.0f, b_min.y + 8.0f), to_u32(p.status_amber), banner.c_str());
+        }
     } else {
         const std::string err = camera_.last_error();
         const char* heading = (status == vision::CameraStatus::Starting)

@@ -6,6 +6,7 @@ cmake-build-*/
 # vcpkg artifacts
 vcpkg_installed/
 .vcpkg/
+third_party/
 
 # IDE and editor files
 .vs/

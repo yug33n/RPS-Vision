@@ -6,18 +6,53 @@
 #include <opencv2/core.hpp>
 #include <opencv2/videoio.hpp>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <objbase.h>
+#endif
+
 namespace rps::vision {
 
 namespace {
 
-bool open_capture_device(cv::VideoCapture& cap, int index) {
+std::mutex& device_open_mutex() {
+    static std::mutex m;
+    return m;
+}
+
 #ifdef _WIN32
-    if (cap.open(index, cv::CAP_DSHOW) && cap.isOpened()) {
-        return true;
+struct ScopedComInit {
+    HRESULT hr = E_FAIL;
+    ScopedComInit() noexcept {
+        hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     }
-    cap.release();
+    ~ScopedComInit() {
+        if (SUCCEEDED(hr)) {
+            CoUninitialize();
+        }
+    }
+};
 #endif
-    return cap.open(index, cv::CAP_ANY) && cap.isOpened();
+
+bool open_capture_device(cv::VideoCapture& cap, int index) {
+    std::scoped_lock lock(device_open_mutex());
+    try {
+#ifdef _WIN32
+        if (cap.open(index, cv::CAP_MSMF) && cap.isOpened()) {
+            return true;
+        }
+        cap.release();
+        if (cap.open(index, cv::CAP_DSHOW) && cap.isOpened()) {
+            return true;
+        }
+        cap.release();
+#endif
+        return cap.open(index, cv::CAP_ANY) && cap.isOpened();
+    } catch (...) {
+        return false;
+    }
 }
 
 } // namespace
@@ -64,6 +99,9 @@ std::string CameraCapture::last_error() const {
 }
 
 std::vector<CameraDevice> CameraCapture::enumerate_devices(int max_probe) {
+#ifdef _WIN32
+    ScopedComInit com_guard;
+#endif
     std::vector<CameraDevice> devices;
     for (int i = 0; i < max_probe; ++i) {
         cv::VideoCapture probe;
@@ -77,6 +115,8 @@ std::vector<CameraDevice> CameraCapture::enumerate_devices(int max_probe) {
                     : std::format("Camera {}", i)
             });
             probe.release();
+        } else {
+            break;
         }
     }
     return devices;
@@ -89,6 +129,9 @@ void CameraCapture::capture_loop(
     int height,
     int fps
 ) {
+#ifdef _WIN32
+    ScopedComInit com_guard;
+#endif
     cv::VideoCapture cap;
     if (!open_capture_device(cap, device_index)) {
         const std::string msg = std::format("Failed to open camera device {}", device_index);

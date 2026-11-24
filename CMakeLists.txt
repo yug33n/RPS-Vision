@@ -28,6 +28,8 @@ set(RPS_VISION_SOURCES
     src/main.cpp
     src/core/AppConfig.cpp
     src/vision/CameraCapture.cpp
+    src/vision/HandTracker.cpp
+    src/vision/GestureClassifier.cpp
     src/ui/TextureManager.cpp
     src/ui/Theme.cpp
     src/ui/ArenaUI.cpp
@@ -67,11 +69,51 @@ if(RPS_VISION_LINK_DEPS)
     find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc videoio)
     find_package(nlohmann_json CONFIG REQUIRED)
 
-    # onnxruntime: prefer installed package, otherwise optional for camera UI milestone
+    # ONNX Runtime: check vcpkg/CMAKE_PREFIX_PATH first, then third_party/onnxruntime or ONNXRUNTIME_ROOT
     find_package(onnxruntime CONFIG QUIET)
-    if(NOT onnxruntime_FOUND)
-        message(STATUS "onnxruntime not found; will be configured in Milestone 3 for hand tracking")
+    set(RPS_ONNXRUNTIME_DLL "")
+    if(onnxruntime_FOUND)
+        set(RPS_HAS_ONNXRUNTIME 1)
+    else()
+        set(_ORT_SEARCH_ROOTS
+            "$ENV{ONNXRUNTIME_ROOT}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime"
+        )
+        find_path(ORT_INCLUDE_DIR
+            NAMES onnxruntime_cxx_api.h
+            PATHS ${_ORT_SEARCH_ROOTS}
+            PATH_SUFFIXES include build/native/include
+            NO_DEFAULT_PATH
+        )
+        find_library(ORT_LIBRARY
+            NAMES onnxruntime
+            PATHS ${_ORT_SEARCH_ROOTS}
+            PATH_SUFFIXES lib runtimes/win-x64/native
+            NO_DEFAULT_PATH
+        )
+        find_file(ORT_DLL
+            NAMES onnxruntime.dll
+            PATHS ${_ORT_SEARCH_ROOTS}
+            PATH_SUFFIXES bin lib runtimes/win-x64/native
+            NO_DEFAULT_PATH
+        )
+        if(ORT_INCLUDE_DIR AND ORT_LIBRARY)
+            add_library(onnxruntime::onnxruntime UNKNOWN IMPORTED)
+            set_target_properties(onnxruntime::onnxruntime PROPERTIES
+                IMPORTED_LOCATION "${ORT_LIBRARY}"
+                INTERFACE_INCLUDE_DIRECTORIES "${ORT_INCLUDE_DIR}"
+            )
+            if(ORT_DLL)
+                set(RPS_ONNXRUNTIME_DLL "${ORT_DLL}")
+            endif()
+            set(RPS_HAS_ONNXRUNTIME 1)
+            message(STATUS "Found local ONNX Runtime: ${ORT_LIBRARY}")
+        else()
+            set(RPS_HAS_ONNXRUNTIME 0)
+            message(WARNING "ONNX Runtime not found; building with CV inference stub until third_party/onnxruntime is provided.")
+        endif()
     endif()
+    target_compile_definitions(RPS_Vision PRIVATE RPS_HAS_ONNXRUNTIME=${RPS_HAS_ONNXRUNTIME})
 
     # llama.cpp: prefer vcpkg package, fallback to FetchContent (v1.0.0)
     find_package(llama CONFIG QUIET)
@@ -123,13 +165,24 @@ if(RPS_VISION_LINK_DEPS)
         opencv_core
         opencv_imgproc
         opencv_videoio
-        $<$<TARGET_EXISTS:onnxruntime::onnxruntime>:onnxruntime::onnxruntime>
         nlohmann_json::nlohmann_json
         $<$<TARGET_EXISTS:llama::llama>:llama::llama>
         $<$<NOT:$<TARGET_EXISTS:llama::llama>>:llama>
         $<$<TARGET_EXISTS:miniaudio::miniaudio>:miniaudio::miniaudio>
         $<$<NOT:$<TARGET_EXISTS:miniaudio::miniaudio>>:miniaudio>
     )
+
+    if(RPS_HAS_ONNXRUNTIME)
+        target_link_libraries(RPS_Vision PRIVATE onnxruntime::onnxruntime)
+        if(RPS_ONNXRUNTIME_DLL AND EXISTS "${RPS_ONNXRUNTIME_DLL}")
+            add_custom_command(TARGET RPS_Vision POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${RPS_ONNXRUNTIME_DLL}"
+                    "$<TARGET_FILE_DIR:RPS_Vision>/onnxruntime.dll"
+                COMMENT "Copying onnxruntime.dll to output folder"
+            )
+        endif()
+    endif()
 
     if(WIN32)
         # Windows SAPI 5.4 COM linkage for local voice synthesis
