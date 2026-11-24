@@ -1,5 +1,6 @@
 #include "core/AppConfig.hpp"
 #include "core/Logger.hpp"
+#include "game/GameEngine.hpp"
 #include "ui/ArenaUI.hpp"
 #include "ui/Theme.hpp"
 #include "vision/CameraCapture.hpp"
@@ -91,10 +92,19 @@ int main() {
     rps::vision::HandTracker hand_tracker;
     (void)hand_tracker.init(config.palm_model_path, config.landmark_model_path);
 
+    rps::game::GameEngine game_engine("data/stats.json");
+    if (config.ai_difficulty == "Casual") {
+        game_engine.set_difficulty(rps::game::AiDifficulty::Casual);
+    } else if (config.ai_difficulty == "Cheater") {
+        game_engine.set_difficulty(rps::game::AiDifficulty::Cheater);
+    } else {
+        game_engine.set_difficulty(rps::game::AiDifficulty::Markov);
+    }
+
     rps::vision::CameraCapture camera;
     camera.set_mirror(config.mirror_camera);
 
-    rps::ui::ArenaUI arena_ui(config, camera, hand_tracker);
+    rps::ui::ArenaUI arena_ui(config, camera, hand_tracker, game_engine);
     camera.start(config.camera_index, config.camera_width, config.camera_height, config.camera_fps);
 
     const rps::ui::ThemePalette& pal = rps::ui::palette();
