@@ -88,14 +88,14 @@ int main() {
         return 1;
     }
 
-    rps::vision::CameraCapture camera;
-    camera.set_mirror(config.mirror_camera);
-    camera.start(config.camera_index, config.camera_width, config.camera_height, config.camera_fps);
-
     rps::vision::HandTracker hand_tracker;
     (void)hand_tracker.init(config.palm_model_path, config.landmark_model_path);
 
+    rps::vision::CameraCapture camera;
+    camera.set_mirror(config.mirror_camera);
+
     rps::ui::ArenaUI arena_ui(config, camera, hand_tracker);
+    camera.start(config.camera_index, config.camera_width, config.camera_height, config.camera_fps);
 
     const rps::ui::ThemePalette& pal = rps::ui::palette();
     while (!glfwWindowShouldClose(window)) {
