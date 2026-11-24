@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/AppConfig.hpp"
+#include "game/GameEngine.hpp"
 #include "ui/TextureManager.hpp"
 #include "vision/CameraCapture.hpp"
 #include "vision/GestureClassifier.hpp"
@@ -22,7 +23,8 @@ public:
     ArenaUI(
         core::AppConfig& config,
         vision::CameraCapture& camera,
-        vision::HandTracker& tracker
+        vision::HandTracker& tracker,
+        game::GameEngine& engine
     );
     ~ArenaUI();
 
@@ -51,6 +53,7 @@ private:
     core::AppConfig& config_;
     vision::CameraCapture& camera_;
     vision::HandTracker& tracker_;
+    game::GameEngine& engine_;
     vision::GestureClassifier classifier_;
     TextureManager camera_texture_;
 

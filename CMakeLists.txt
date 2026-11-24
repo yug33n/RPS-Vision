@@ -30,6 +30,8 @@ set(RPS_VISION_SOURCES
     src/vision/CameraCapture.cpp
     src/vision/HandTracker.cpp
     src/vision/GestureClassifier.cpp
+    src/game/MarkovPredictor.cpp
+    src/game/GameEngine.cpp
     src/ui/TextureManager.cpp
     src/ui/Theme.cpp
     src/ui/ArenaUI.cpp
