@@ -36,5 +36,5 @@ CMakeUserPresets.json
 *.tflite
 
 # Runtime user data and logs
-data/*.json
+data/
 *.log
