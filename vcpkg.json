@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "rps-vision",
+  "version-semver": "0.1.0",
+  "description": "Real-time AI Rock-Paper-Scissors desktop application powered by ONNX Runtime, OpenCV, Dear ImGui, and local llama.cpp.",
+  "builtin-baseline": "2f8bf7a5bad48aaef99d80b221fca712f016ab8f",
+  "dependencies": [
+    {
+      "name": "opencv4",
+      "default-features": false,
+      "features": [
+        "dshow",
+        "jpeg",
+        "png"
+      ]
+    },
+    "onnxruntime",
+    {
+      "name": "imgui",
+      "features": [
+        "glfw-binding",
+        "opengl3-binding",
+        "docking-experimental"
+      ]
+    },
+    "glfw3",
+    "implot",
+    "nlohmann-json",
+    "llama-cpp",
+    "miniaudio"
+  ]
+}
