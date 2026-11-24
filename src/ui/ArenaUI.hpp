@@ -48,9 +48,12 @@ public:
      */
     void render();
 
+    [[nodiscard]] bool exit_requested() const noexcept { return exit_requested_; }
+
 private:
     void cv_worker_loop(std::stop_token stop_token);
     void render_top_bar();
+    void render_left_column(float width, float height);
     void render_webcam_arena(float width, float height);
     void render_sidebar(float width, float height);
     void render_opponent_card();
@@ -86,6 +89,7 @@ private:
     int preview_difficulty_idx_ = 1;
     int preview_commentator_idx_ = 0;
     int language_idx_ = 0;
+    bool exit_requested_ = false;
 };
 
 } // namespace rps::ui

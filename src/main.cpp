@@ -44,10 +44,16 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
+
+    GLFWmonitor* primary_monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* vidmode = primary_monitor ? glfwGetVideoMode(primary_monitor) : nullptr;
+    const int init_w = vidmode ? vidmode->width : config.window_width;
+    const int init_h = vidmode ? vidmode->height : config.window_height;
 
     GLFWwindow* window = glfwCreateWindow(
-        config.window_width,
-        config.window_height,
+        init_w,
+        init_h,
         "RPS Vision // Cyber Arena",
         nullptr,
         nullptr
@@ -56,6 +62,9 @@ int main() {
         rps::core::Logger::error("Failed to create GLFW window.");
         glfwTerminate();
         return 1;
+    }
+    if (vidmode != nullptr) {
+        glfwSetWindowPos(window, 0, 0);
     }
 
     glfwMakeContextCurrent(window);
@@ -70,8 +79,8 @@ int main() {
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.IniFilename = nullptr;
 
-    rps::ui::apply_esports_theme();
-    rps::ui::load_fonts(config.font_path, 17.0f);
+    rps::ui::apply_esports_theme(vidmode ? std::max(1.0f, static_cast<float>(vidmode->height) / 1080.0f) : 1.0f);
+    rps::ui::load_fonts(config.font_path, 19.0f);
 
     if (!ImGui_ImplGlfw_InitForOpenGL(window, true)) {
         rps::core::Logger::error("Failed to initialize ImGui GLFW backend.");
@@ -121,9 +130,26 @@ int main() {
     );
     camera.start(config.camera_index, config.camera_width, config.camera_height, config.camera_fps);
 
+    bool is_fullscreen = true;
+    bool prev_f11 = false;
     const rps::ui::ThemePalette& pal = rps::ui::palette();
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        const bool f11_now = (glfwGetKey(window, GLFW_KEY_F11) == GLFW_PRESS);
+        if (f11_now && !prev_f11) {
+            is_fullscreen = !is_fullscreen;
+            if (is_fullscreen && vidmode != nullptr) {
+                glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
+                glfwSetWindowSize(window, vidmode->width, vidmode->height);
+                glfwSetWindowPos(window, 0, 0);
+            } else {
+                glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
+                glfwSetWindowSize(window, config.window_width, config.window_height);
+                glfwSetWindowPos(window, 80, 60);
+            }
+        }
+        prev_f11 = f11_now;
 
         int display_w = 0;
         int display_h = 0;
@@ -138,6 +164,9 @@ int main() {
         ImGui::NewFrame();
 
         arena_ui.render();
+        if (arena_ui.exit_requested()) {
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
 
         ImGui::Render();
         glViewport(0, 0, display_w, display_h);
