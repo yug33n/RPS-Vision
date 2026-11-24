@@ -1,5 +1,9 @@
 #pragma once
 
+#include "ai/ICommentator.hpp"
+#include "ai/LlamaCommentator.hpp"
+#include "ai/TemplateCommentator.hpp"
+#include "audio/AudioEngine.hpp"
 #include "core/AppConfig.hpp"
 #include "game/GameEngine.hpp"
 #include "ui/TextureManager.hpp"
@@ -24,7 +28,10 @@ public:
         core::AppConfig& config,
         vision::CameraCapture& camera,
         vision::HandTracker& tracker,
-        game::GameEngine& engine
+        game::GameEngine& engine,
+        ai::TemplateCommentator& template_commentator,
+        ai::LlamaCommentator& llama_commentator,
+        audio::AudioEngine& audio_engine
     );
     ~ArenaUI();
 
@@ -54,6 +61,9 @@ private:
     vision::CameraCapture& camera_;
     vision::HandTracker& tracker_;
     game::GameEngine& engine_;
+    ai::TemplateCommentator& template_commentator_;
+    ai::LlamaCommentator& llama_commentator_;
+    audio::AudioEngine& audio_engine_;
     vision::GestureClassifier classifier_;
     TextureManager camera_texture_;
 
@@ -65,9 +75,17 @@ private:
     vision::HandTrackingResult latest_tracking_;
     vision::GestureResult latest_gesture_;
 
+    std::vector<ai::CommentatorMessage> chat_log_;
+    bool chat_scroll_to_bottom_ = false;
+    std::string last_countdown_label_;
+    game::Move last_player_move_ = game::Move::None;
+    int consecutive_same_move_ = 0;
+    int consecutive_draws_ = 0;
+
     std::vector<vision::CameraDevice> devices_;
     int preview_difficulty_idx_ = 1;
     int preview_commentator_idx_ = 0;
+    int language_idx_ = 0;
 };
 
 } // namespace rps::ui

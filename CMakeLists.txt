@@ -32,6 +32,9 @@ set(RPS_VISION_SOURCES
     src/vision/GestureClassifier.cpp
     src/game/MarkovPredictor.cpp
     src/game/GameEngine.cpp
+    src/ai/TemplateCommentator.cpp
+    src/ai/LlamaCommentator.cpp
+    src/audio/AudioEngine.cpp
     src/ui/TextureManager.cpp
     src/ui/Theme.cpp
     src/ui/ArenaUI.cpp

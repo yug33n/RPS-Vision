@@ -1,3 +1,6 @@
+#include "ai/LlamaCommentator.hpp"
+#include "ai/TemplateCommentator.hpp"
+#include "audio/AudioEngine.hpp"
 #include "core/AppConfig.hpp"
 #include "core/Logger.hpp"
 #include "game/GameEngine.hpp"
@@ -101,10 +104,21 @@ int main() {
         game_engine.set_difficulty(rps::game::AiDifficulty::Markov);
     }
 
+    rps::ai::TemplateCommentator template_commentator;
+    rps::ai::LlamaCommentator llama_commentator;
+    (void)llama_commentator.init(config.llm_model_path);
+
+    rps::audio::AudioEngine audio_engine;
+    audio_engine.set_volume(config.sfx_volume);
+    (void)audio_engine.init();
+
     rps::vision::CameraCapture camera;
     camera.set_mirror(config.mirror_camera);
 
-    rps::ui::ArenaUI arena_ui(config, camera, hand_tracker, game_engine);
+    rps::ui::ArenaUI arena_ui(
+        config, camera, hand_tracker, game_engine,
+        template_commentator, llama_commentator, audio_engine
+    );
     camera.start(config.camera_index, config.camera_width, config.camera_height, config.camera_fps);
 
     const rps::ui::ThemePalette& pal = rps::ui::palette();
