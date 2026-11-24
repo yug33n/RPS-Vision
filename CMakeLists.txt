@@ -26,6 +26,11 @@ option(RPS_VISION_LINK_DEPS "Find and link external dependencies from vcpkg / Fe
 
 set(RPS_VISION_SOURCES
     src/main.cpp
+    src/core/AppConfig.cpp
+    src/vision/CameraCapture.cpp
+    src/ui/TextureManager.cpp
+    src/ui/Theme.cpp
+    src/ui/ArenaUI.cpp
 )
 
 add_executable(RPS_Vision ${RPS_VISION_SOURCES})
