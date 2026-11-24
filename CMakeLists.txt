@@ -65,8 +65,13 @@ if(RPS_VISION_LINK_DEPS)
     find_package(imgui CONFIG REQUIRED)
     find_package(implot CONFIG REQUIRED)
     find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc videoio)
-    find_package(onnxruntime CONFIG REQUIRED)
     find_package(nlohmann_json CONFIG REQUIRED)
+
+    # onnxruntime: prefer installed package, otherwise optional for camera UI milestone
+    find_package(onnxruntime CONFIG QUIET)
+    if(NOT onnxruntime_FOUND)
+        message(STATUS "onnxruntime not found; will be configured in Milestone 3 for hand tracking")
+    endif()
 
     # llama.cpp: prefer vcpkg package, fallback to FetchContent (v1.0.0)
     find_package(llama CONFIG QUIET)
@@ -118,7 +123,7 @@ if(RPS_VISION_LINK_DEPS)
         opencv_core
         opencv_imgproc
         opencv_videoio
-        onnxruntime::onnxruntime
+        $<$<TARGET_EXISTS:onnxruntime::onnxruntime>:onnxruntime::onnxruntime>
         nlohmann_json::nlohmann_json
         $<$<TARGET_EXISTS:llama::llama>:llama::llama>
         $<$<NOT:$<TARGET_EXISTS:llama::llama>>:llama>
