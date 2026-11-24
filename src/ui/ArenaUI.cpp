@@ -71,6 +71,25 @@ void draw_hand_skeleton(
     }
 }
 
+void draw_floating_pill(
+    ImDrawList* dl,
+    const ImVec2& pos,
+    const std::string& text,
+    const ImVec4& accent,
+    ImFont* font = nullptr
+) {
+    ImFont* use_font = font ? font : ImGui::GetFont();
+    const float font_size = ImGui::GetFontSize();
+    const ImVec2 txt_sz = use_font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, text.c_str());
+    constexpr float kPadX = 12.0f;
+    constexpr float kPadY = 6.0f;
+    const ImVec2 max_pt(pos.x + txt_sz.x + kPadX * 2.0f, pos.y + txt_sz.y + kPadY * 2.0f);
+
+    dl->AddRectFilled(pos, max_pt, IM_COL32(10, 14, 22, 205), 8.0f);
+    dl->AddRect(pos, max_pt, to_u32(ImVec4(accent.x, accent.y, accent.z, 0.75f)), 8.0f, 0, 1.3f);
+    dl->AddText(use_font, font_size, ImVec2(pos.x + kPadX, pos.y + kPadY), to_u32(accent), text.c_str());
+}
+
 void draw_countdown_overlay(
     ImDrawList* dl,
     const ImVec2& rect_min,
@@ -84,25 +103,28 @@ void draw_countdown_overlay(
     }
 
     const ImVec2 center(rect_min.x + rect_size.x * 0.5f, rect_min.y + rect_size.y * 0.5f);
-    constexpr float kRadius = 64.0f;
+    constexpr float kRadius = 78.0f;
 
-    dl->AddCircleFilled(center, kRadius, IM_COL32(11, 15, 23, 195), 48);
-    dl->AddCircle(center, kRadius, to_u32(p.border_subtle), 48, 3.0f);
+    dl->AddCircleFilled(center, kRadius + 8.0f, IM_COL32(10, 14, 22, 210), 64);
+    dl->AddCircle(center, kRadius, to_u32(p.border_subtle), 64, 4.0f);
 
     const float progress = (st == game::GameState::Capture) ? 1.0f : engine.countdown_progress();
     constexpr float kPi = 3.14159265f;
     const float start_angle = -kPi * 0.5f;
     const float end_angle = start_angle + progress * 2.0f * kPi;
-    const ImU32 arc_col = (st == game::GameState::Capture) ? to_u32(p.accent_purple) : to_u32(p.accent_cyan);
+    const ImVec4 arc_vec = (st == game::GameState::Capture) ? p.accent_purple : p.accent_cyan;
 
     dl->PathClear();
-    dl->PathArcTo(center, kRadius, start_angle, end_angle, 48);
-    dl->PathStroke(arc_col, ImDrawFlags_None, 5.0f);
+    dl->PathArcTo(center, kRadius, start_angle, end_angle, 64);
+    dl->PathStroke(to_u32(ImVec4(arc_vec.x, arc_vec.y, arc_vec.z, 0.25f)), ImDrawFlags_None, 12.0f);
+
+    dl->PathClear();
+    dl->PathArcTo(center, kRadius, start_angle, end_angle, 64);
+    dl->PathStroke(to_u32(arc_vec), ImDrawFlags_None, 5.5f);
 
     const std::string label = engine.countdown_label();
-    const float font_scale = (label == "SHOOT!") ? 1.8f : 2.8f;
-    ImFont* font = ImGui::GetFont();
-    const float font_size = ImGui::GetFontSize() * font_scale;
+    ImFont* font = fonts().display ? fonts().display : ImGui::GetFont();
+    const float font_size = (label == "SHOOT!") ? 34.0f : 52.0f;
     const ImVec2 text_sz = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, label.c_str());
     dl->AddText(
         font,
@@ -124,23 +146,35 @@ void draw_round_result_card(
     if (rec.result == game::RoundResult::PlayerWin) accent = p.status_green;
     else if (rec.result == game::RoundResult::AiWin) accent = p.status_red;
 
-    const float card_w = std::min(360.0f, rect_size.x - 32.0f);
-    constexpr float card_h = 92.0f;
-    const ImVec2 c_min(rect_min.x + (rect_size.x - card_w) * 0.5f, rect_min.y + 18.0f);
+    const float card_w = std::min(430.0f, rect_size.x - 40.0f);
+    constexpr float card_h = 88.0f;
+    const ImVec2 c_min(rect_min.x + (rect_size.x - card_w) * 0.5f, rect_min.y + 54.0f);
     const ImVec2 c_max(c_min.x + card_w, c_min.y + card_h);
 
-    dl->AddRectFilled(c_min, c_max, IM_COL32(14, 19, 30, 225), 10.0f);
-    dl->AddRect(c_min, c_max, to_u32(accent), 10.0f, 0, 2.0f);
+    dl->AddRectFilled(c_min, c_max, IM_COL32(10, 14, 22, 232), 12.0f);
+    dl->AddRect(c_min, c_max, to_u32(accent), 12.0f, 0, 2.0f);
 
-    const std::string title = std::format("ROUND #{}  -  {}", rec.round_number, game::to_string(rec.result));
-    const ImVec2 title_sz = ImGui::CalcTextSize(title.c_str());
-    dl->AddText(ImVec2(c_min.x + (card_w - title_sz.x) * 0.5f, c_min.y + 14.0f), to_u32(accent), title.c_str());
+    ImFont* bold = fonts().bold ? fonts().bold : ImGui::GetFont();
+    const float bold_sz = bold->LegacySize > 0.0f ? bold->LegacySize : ImGui::GetFontSize();
 
-    const std::string vs_line = std::format("YOU: {}   vs   AI: {}",
-                                            game::to_string(rec.player_move),
-                                            game::to_string(rec.ai_move));
-    const ImVec2 vs_sz = ImGui::CalcTextSize(vs_line.c_str());
-    dl->AddText(ImVec2(c_min.x + (card_w - vs_sz.x) * 0.5f, c_min.y + 48.0f), to_u32(p.text_primary), vs_line.c_str());
+    const std::string title = std::format("ROUND #{}  //  {}", rec.round_number, game::to_string(rec.result));
+    const ImVec2 title_sz = bold->CalcTextSizeA(bold_sz, FLT_MAX, 0.0f, title.c_str());
+    dl->AddText(bold, bold_sz, ImVec2(c_min.x + (card_w - title_sz.x) * 0.5f, c_min.y + 12.0f),
+                to_u32(accent), title.c_str());
+
+    const std::string p_str = std::format("YOU: {}", game::to_string(rec.player_move));
+    const std::string a_str = std::format("AI: {}", game::to_string(rec.ai_move));
+    const char* vs_str = "VS";
+
+    const ImVec2 p_sz = bold->CalcTextSizeA(bold_sz, FLT_MAX, 0.0f, p_str.c_str());
+    const ImVec2 a_sz = bold->CalcTextSizeA(bold_sz, FLT_MAX, 0.0f, a_str.c_str());
+    const ImVec2 v_sz = bold->CalcTextSizeA(bold_sz, FLT_MAX, 0.0f, vs_str);
+
+    const float row_y = c_min.y + 46.0f;
+    dl->AddText(bold, bold_sz, ImVec2(c_min.x + 26.0f, row_y), to_u32(p.accent_cyan), p_str.c_str());
+    dl->AddText(bold, bold_sz, ImVec2(c_min.x + (card_w - v_sz.x) * 0.5f, row_y), to_u32(p.text_muted), vs_str);
+    dl->AddText(bold, bold_sz, ImVec2(c_max.x - 26.0f - a_sz.x, row_y), to_u32(p.accent_purple), a_str.c_str());
+    (void)p_sz;
 }
 
 void draw_corner_reticle(ImDrawList* draw_list, ImVec2 min_pt, ImVec2 max_pt, ImU32 color) {
@@ -345,9 +379,11 @@ void ArenaUI::render() {
 void ArenaUI::render_top_bar() {
     const ThemePalette& p = palette();
 
-    ImGui::BeginChild("TopBar", ImVec2(0.0f, 52.0f), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("TopBar", ImVec2(0.0f, 56.0f), ImGuiChildFlags_Borders);
     ImGui::AlignTextToFramePadding();
+    if (fonts().bold) ImGui::PushFont(fonts().bold);
     ImGui::TextColored(p.accent_cyan, "RPS VISION");
+    if (fonts().bold) ImGui::PopFont();
     ImGui::SameLine();
     ImGui::TextColored(p.text_muted, "// CYBER ARENA");
 
@@ -361,7 +397,7 @@ void ArenaUI::render_top_bar() {
         }
     }
 
-    ImGui::SetNextItemWidth(210.0f);
+    ImGui::SetNextItemWidth(220.0f);
     if (ImGui::BeginCombo("##CameraSelect", active_label.c_str())) {
         for (const auto& dev : devices_) {
             const bool selected = (dev.index == config_.camera_index);
@@ -408,15 +444,26 @@ void ArenaUI::render_top_bar() {
 
     const float ui_fps = ImGui::GetIO().Framerate;
     const double cam_fps = camera_.current_fps();
-    const std::string stats = std::format("UI {:.0f} FPS  |  CAM {:.1f} FPS", ui_fps, cam_fps);
-    const float stats_w = ImGui::CalcTextSize(stats.c_str()).x + 12.0f;
+    const std::string stats = std::format("UI {:.0f} FPS  |  CAM {:.1f} FPS  |  F11", ui_fps, cam_fps);
+    constexpr float kExitW = 72.0f;
+    const float stats_w = ImGui::CalcTextSize(stats.c_str()).x + kExitW + 32.0f;
     const float cursor_target = ImGui::GetWindowWidth() - stats_w - ImGui::GetStyle().WindowPadding.x;
     if (cursor_target > ImGui::GetCursorPosX() + 12.0f) {
         ImGui::SameLine(cursor_target);
     } else {
         ImGui::SameLine();
     }
-    ImGui::TextColored(p.accent_cyan, "%s", stats.c_str());
+    ImGui::TextColored(p.text_muted, "%s", stats.c_str());
+
+    ImGui::SameLine(0.0f, 14.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.937f, 0.267f, 0.267f, 0.18f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, p.status_red);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, p.status_red);
+    ImGui::PushStyleColor(ImGuiCol_Border, p.status_red);
+    if (ImGui::Button("EXIT", ImVec2(kExitW, 0.0f))) {
+        exit_requested_ = true;
+    }
+    ImGui::PopStyleColor(4);
 
     ImGui::EndChild();
 }
@@ -427,17 +474,19 @@ void ArenaUI::render_webcam_arena(float width, float height) {
     ImGui::BeginChild("WebcamArena", ImVec2(width, height), ImGuiChildFlags_Borders);
 
     const vision::CameraStatus status = camera_.status();
+    std::string live_label = "CAMERA STOPPED";
+    ImVec4 live_col = p.text_muted;
     if (status == vision::CameraStatus::Running) {
-        const std::string live_label = camera_texture_.valid()
+        live_label = camera_texture_.valid()
             ? std::format("LIVE  {}x{}", camera_texture_.width(), camera_texture_.height())
             : "LIVE";
-        draw_status_pill(live_label.c_str(), p.status_green);
+        live_col = p.status_green;
     } else if (status == vision::CameraStatus::Starting) {
-        draw_status_pill("STARTING CAMERA...", p.status_amber);
+        live_label = "STARTING CAMERA...";
+        live_col = p.status_amber;
     } else if (status == vision::CameraStatus::Error) {
-        draw_status_pill("CAMERA ERROR", p.status_red);
-    } else {
-        draw_status_pill("CAMERA STOPPED", p.text_muted);
+        live_label = "CAMERA ERROR";
+        live_col = p.status_red;
     }
 
     vision::HandTrackingResult tracking;
@@ -459,7 +508,7 @@ void ArenaUI::render_webcam_arena(float width, float height) {
         cv_badge_color = p.status_red;
     } else if (tracking.hand_detected) {
         const int pct = static_cast<int>(gesture.confidence * 100.0f);
-        cv_badge = std::format("{} [{}%] ({:.1f}ms)",
+        cv_badge = std::format("{} [{}%]  {:.1f}ms",
                                vision::GestureClassifier::to_string(gesture.gesture),
                                pct,
                                tracking.inference_ms);
@@ -470,12 +519,6 @@ void ArenaUI::render_webcam_arena(float width, float height) {
         cv_badge = "NO HAND DETECTED";
         cv_badge_color = p.text_muted;
     }
-
-    const float badge_w = ImGui::CalcTextSize(cv_badge.c_str()).x + 24.0f;
-    ImGui::SameLine(std::max(0.0f, ImGui::GetWindowContentRegionMax().x - badge_w));
-    draw_status_pill(cv_badge.c_str(), cv_badge_color);
-
-    ImGui::Separator();
 
     const ImVec2 region = ImGui::GetContentRegionAvail();
     if (status == vision::CameraStatus::Running && camera_texture_.valid()) {
@@ -496,13 +539,17 @@ void ArenaUI::render_webcam_arena(float width, float height) {
         const ImVec2 screen_max(screen_min.x + draw_size.x, screen_min.y + draw_size.y);
 
         ImDrawList* dl = ImGui::GetWindowDrawList();
-        dl->AddRect(screen_min, screen_max, to_u32(p.border_subtle), 4.0f, 0, 1.0f);
+        dl->AddRect(screen_min, screen_max, to_u32(p.border_subtle), 6.0f, 0, 1.5f);
         draw_corner_reticle(dl, screen_min, screen_max, to_u32(p.accent_cyan));
         draw_hand_skeleton(dl, screen_min, draw_size, tracking, gesture, p);
         draw_countdown_overlay(dl, screen_min, draw_size, engine_, p);
         if (engine_.state() == game::GameState::RoundEnd && engine_.last_round().has_value()) {
             draw_round_result_card(dl, screen_min, draw_size, *engine_.last_round(), p);
         }
+
+        draw_floating_pill(dl, ImVec2(screen_min.x + 14.0f, screen_min.y + 14.0f), live_label, live_col, fonts().bold);
+        const float cv_w = ImGui::CalcTextSize(cv_badge.c_str()).x + 24.0f;
+        draw_floating_pill(dl, ImVec2(screen_max.x - cv_w - 14.0f, screen_min.y + 14.0f), cv_badge, cv_badge_color, fonts().bold);
 
         if (tracker_status == vision::TrackerStatus::ModelsMissing ||
             tracker_status == vision::TrackerStatus::Error) {
@@ -563,10 +610,39 @@ void ArenaUI::render_sidebar(float width, float height) {
 
 void ArenaUI::render_opponent_card() {
     const ThemePalette& p = palette();
-    ImGui::BeginChild("OpponentCard", ImVec2(0.0f, 222.0f), ImGuiChildFlags_Borders);
-    ImGui::TextColored(p.accent_cyan, "AI OPPONENT & CONTROLS");
+    ImGui::BeginChild("OpponentCard", ImVec2(0.0f, 224.0f), ImGuiChildFlags_Borders);
+    if (fonts().bold) ImGui::PushFont(fonts().bold);
+    ImGui::TextColored(p.accent_cyan, "AI OPPONENT & MATCH");
+    if (fonts().bold) ImGui::PopFont();
     ImGui::Separator();
 
+    const bool active = (engine_.state() == game::GameState::Countdown ||
+                         engine_.state() == game::GameState::Capture);
+    if (active) {
+        ImGui::PushStyleColor(ImGuiCol_Button, p.status_red);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.98f, 0.35f, 0.35f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, p.status_red);
+        ImGui::PushStyleColor(ImGuiCol_Text, p.text_primary);
+        if (fonts().bold) ImGui::PushFont(fonts().bold);
+        if (ImGui::Button("CANCEL ROUND", ImVec2(-1.0f, 40.0f))) {
+            engine_.cancel_round();
+        }
+        if (fonts().bold) ImGui::PopFont();
+        ImGui::PopStyleColor(4);
+    } else {
+        ImGui::PushStyleColor(ImGuiCol_Button, p.accent_cyan);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.94f, 1.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, p.accent_cyan);
+        ImGui::PushStyleColor(ImGuiCol_Text, p.bg_canvas);
+        if (fonts().bold) ImGui::PushFont(fonts().bold);
+        if (ImGui::Button("PLAY ROUND  (3-2-1-SHOOT)", ImVec2(-1.0f, 40.0f))) {
+            engine_.start_round();
+        }
+        if (fonts().bold) ImGui::PopFont();
+        ImGui::PopStyleColor(4);
+    }
+
+    ImGui::Spacing();
     const char* difficulties[] = {"Casual (RNG)", "Tactician (Markov-2)", "Unbeatable (Cheater)"};
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::Combo("##Difficulty", &preview_difficulty_idx_, difficulties, IM_ARRAYSIZE(difficulties))) {
@@ -581,7 +657,7 @@ void ArenaUI::render_opponent_card() {
         "Template Engine (Offline)",
         llama_commentator_.is_available() ? "Local LLM (GGUF Ready)" : "Local LLM (No GGUF -> Fallback)"
     };
-    ImGui::SetNextItemWidth(-90.0f);
+    ImGui::SetNextItemWidth(-84.0f);
     if (ImGui::Combo("##Commentator", &preview_commentator_idx_, commentators, IM_ARRAYSIZE(commentators))) {
         config_.commentator_mode = (preview_commentator_idx_ == 1) ? "LLM" : "Template";
     }
@@ -607,25 +683,15 @@ void ArenaUI::render_opponent_card() {
         audio_engine_.set_volume(config_.sfx_volume);
     }
 
-    const bool active = (engine_.state() == game::GameState::Countdown ||
-                         engine_.state() == game::GameState::Capture);
-    if (active) {
-        if (ImGui::Button("CANCEL ROUND", ImVec2(-1.0f, 34.0f))) {
-            engine_.cancel_round();
-        }
-    } else {
-        if (ImGui::Button("PLAY ROUND (3-2-1-SHOOT)", ImVec2(-1.0f, 34.0f))) {
-            engine_.start_round();
-        }
-    }
-
     ImGui::EndChild();
 }
 
 void ArenaUI::render_chat_card(float height) {
     const ThemePalette& p = palette();
     ImGui::BeginChild("CommentatorChatCard", ImVec2(0.0f, height), ImGuiChildFlags_Borders);
+    if (fonts().bold) ImGui::PushFont(fonts().bold);
     ImGui::TextColored(p.accent_purple, "AI COMMENTATOR CHAT");
+    if (fonts().bold) ImGui::PopFont();
     if (llama_commentator_.is_busy()) {
         ImGui::SameLine();
         ImGui::TextColored(p.accent_cyan, "(typing...)");
@@ -633,13 +699,25 @@ void ArenaUI::render_chat_card(float height) {
     ImGui::Separator();
 
     ImGui::BeginChild("ChatScroll", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
     for (const auto& msg : chat_log_) {
         const ImVec4 tag_col = (msg.author == "LOCAL-LLM") ? p.accent_purple : p.accent_cyan;
+        const ImVec2 row_start = ImGui::GetCursorScreenPos();
+        ImGui::Indent(10.0f);
+        if (fonts().bold) ImGui::PushFont(fonts().bold);
+        ImGui::TextColored(tag_col, "%s", msg.author.c_str());
+        if (fonts().bold) ImGui::PopFont();
+        ImGui::SameLine();
         ImGui::TextColored(p.text_muted, "[%s]", msg.timestamp.c_str());
-        ImGui::SameLine();
-        ImGui::TextColored(tag_col, "[%s]", msg.author.c_str());
-        ImGui::SameLine();
         ImGui::TextWrapped("%s", msg.text.c_str());
+        ImGui::Unindent(10.0f);
+        const ImVec2 row_end = ImGui::GetCursorScreenPos();
+        dl->AddRectFilled(
+            ImVec2(row_start.x, row_start.y + 2.0f),
+            ImVec2(row_start.x + 3.0f, std::max(row_start.y + 20.0f, row_end.y - 2.0f)),
+            to_u32(tag_col),
+            2.0f
+        );
         ImGui::Spacing();
     }
     if (chat_scroll_to_bottom_) {
@@ -658,20 +736,40 @@ void ArenaUI::render_analytics_card() {
     const auto& winrate_series = engine_.winrate_progression();
 
     ImGui::BeginChild("AnalyticsCard", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
-    ImGui::TextColored(p.accent_cyan, "MATCH ANALYTICS & LOG");
+    if (fonts().bold) ImGui::PushFont(fonts().bold);
+    ImGui::TextColored(p.accent_cyan, "MATCH ANALYTICS");
+    if (fonts().bold) ImGui::PopFont();
     ImGui::SameLine(std::max(0.0f, ImGui::GetWindowWidth() - 78.0f));
     if (ImGui::SmallButton("Reset")) {
         engine_.reset_stats();
     }
     ImGui::Separator();
 
-    ImGui::TextColored(p.status_green, "W:%d", stats.player_wins);
-    ImGui::SameLine(0.0f, 12.0f);
-    ImGui::TextColored(p.status_red, "L:%d", stats.ai_wins);
-    ImGui::SameLine(0.0f, 12.0f);
-    ImGui::TextColored(p.status_amber, "D:%d", stats.draws);
-    ImGui::SameLine(0.0f, 12.0f);
-    ImGui::TextColored(p.accent_cyan, "WR: %.1f%%", stats.winrate_percent());
+    auto draw_kpi_tile = [&](const char* id, const char* label, const std::string& val, const ImVec4& col) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, p.bg_elevated);
+        ImGui::BeginChild(id, ImVec2(0.0f, 54.0f), ImGuiChildFlags_Borders);
+        ImGui::TextColored(p.text_muted, "%s", label);
+        if (fonts().bold) ImGui::PushFont(fonts().bold);
+        ImGui::TextColored(col, "%s", val.c_str());
+        if (fonts().bold) ImGui::PopFont();
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+    };
+
+    if (ImGui::BeginTable("KpiTiles", 4, ImGuiTableFlags_SizingStretchSame)) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        draw_kpi_tile("KpiW", "WINS", std::to_string(stats.player_wins), p.status_green);
+        ImGui::TableSetColumnIndex(1);
+        draw_kpi_tile("KpiL", "LOSSES", std::to_string(stats.ai_wins), p.status_red);
+        ImGui::TableSetColumnIndex(2);
+        draw_kpi_tile("KpiD", "DRAWS", std::to_string(stats.draws), p.status_amber);
+        ImGui::TableSetColumnIndex(3);
+        draw_kpi_tile("KpiWR", "WINRATE", std::format("{:.0f}%", stats.winrate_percent()), p.accent_cyan);
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
 
     if (!winrate_series.empty()) {
         if (ImPlot::BeginPlot("##WinratePlot", ImVec2(-1.0f, 125.0f),

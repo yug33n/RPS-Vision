@@ -2,36 +2,45 @@
 #include "core/Logger.hpp"
 
 #include <array>
+#include <implot.h>
 #include <string>
 
 namespace rps::ui {
+
+namespace {
+ThemeFonts g_fonts;
+} // namespace
 
 const ThemePalette& palette() noexcept {
     static const ThemePalette p;
     return p;
 }
 
+const ThemeFonts& fonts() noexcept {
+    return g_fonts;
+}
+
 void apply_esports_theme() {
     const ThemePalette& p = palette();
     ImGuiStyle& style = ImGui::GetStyle();
 
-    style.WindowPadding = ImVec2(14.0f, 12.0f);
-    style.FramePadding = ImVec2(10.0f, 6.0f);
-    style.CellPadding = ImVec2(8.0f, 5.0f);
+    style.WindowPadding = ImVec2(16.0f, 14.0f);
+    style.FramePadding = ImVec2(10.0f, 7.0f);
+    style.CellPadding = ImVec2(8.0f, 6.0f);
     style.ItemSpacing = ImVec2(10.0f, 8.0f);
     style.ItemInnerSpacing = ImVec2(6.0f, 6.0f);
-    style.ScrollbarSize = 12.0f;
+    style.ScrollbarSize = 10.0f;
     style.GrabMinSize = 10.0f;
 
-    style.WindowBorderSize = 1.0f;
+    style.WindowBorderSize = 0.0f;
     style.ChildBorderSize = 1.0f;
     style.PopupBorderSize = 1.0f;
     style.FrameBorderSize = 1.0f;
 
-    style.WindowRounding = 8.0f;
-    style.ChildRounding = 8.0f;
+    style.WindowRounding = 0.0f;
+    style.ChildRounding = 10.0f;
     style.FrameRounding = 6.0f;
-    style.PopupRounding = 6.0f;
+    style.PopupRounding = 8.0f;
     style.ScrollbarRounding = 6.0f;
     style.GrabRounding = 6.0f;
     style.TabRounding = 6.0f;
@@ -54,7 +63,7 @@ void apply_esports_theme() {
     colors[ImGuiCol_TitleBgCollapsed]     = p.bg_canvas;
     colors[ImGuiCol_MenuBarBg]            = p.bg_panel;
 
-    colors[ImGuiCol_ScrollbarBg]          = p.bg_canvas;
+    colors[ImGuiCol_ScrollbarBg]          = p.bg_panel;
     colors[ImGuiCol_ScrollbarGrab]        = ImVec4(0.220f, 0.282f, 0.392f, 1.00f);
     colors[ImGuiCol_ScrollbarGrabHovered] = p.accent_cyan;
     colors[ImGuiCol_ScrollbarGrabActive]  = p.accent_purple;
@@ -63,7 +72,7 @@ void apply_esports_theme() {
     colors[ImGuiCol_SliderGrab]           = p.accent_cyan;
     colors[ImGuiCol_SliderGrabActive]     = p.accent_purple;
 
-    colors[ImGuiCol_Button]               = ImVec4(0.118f, 0.173f, 0.255f, 1.00f);
+    colors[ImGuiCol_Button]               = p.bg_elevated;
     colors[ImGuiCol_ButtonHovered]        = ImVec4(0.000f, 0.620f, 0.720f, 0.85f);
     colors[ImGuiCol_ButtonActive]         = ImVec4(0.000f, 0.780f, 0.900f, 1.00f);
 
@@ -75,37 +84,74 @@ void apply_esports_theme() {
     colors[ImGuiCol_SeparatorHovered]     = p.accent_cyan;
     colors[ImGuiCol_SeparatorActive]      = p.accent_purple;
 
-    colors[ImGuiCol_Tab]                  = p.bg_elevated;
-    colors[ImGuiCol_TabHovered]           = ImVec4(0.000f, 0.560f, 0.660f, 0.75f);
-    colors[ImGuiCol_TabSelected]          = ImVec4(0.000f, 0.480f, 0.580f, 0.90f);
-    colors[ImGuiCol_PlotLines]            = p.accent_cyan;
-    colors[ImGuiCol_PlotHistogram]        = p.accent_purple;
+    colors[ImGuiCol_TableHeaderBg]        = p.bg_elevated;
+    colors[ImGuiCol_TableRowBg]           = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    colors[ImGuiCol_TableRowBgAlt]        = ImVec4(1.0f, 1.0f, 1.0f, 0.025f);
+
+    ImPlotStyle& plot_style = ImPlot::GetStyle();
+    plot_style.Colors[ImPlotCol_PlotBg]    = ImVec4(0.043f, 0.059f, 0.090f, 0.65f);
+    plot_style.Colors[ImPlotCol_FrameBg]   = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    plot_style.Colors[ImPlotCol_PlotBorder]= p.border_subtle;
+    plot_style.PlotPadding = ImVec2(6.0f, 6.0f);
 }
 
 void load_fonts(const std::filesystem::path& preferred_font_path, float base_size_px) {
     ImGuiIO& io = ImGui::GetIO();
 
-    const std::array<std::filesystem::path, 4> candidates = {
+    auto try_load = [&](const std::filesystem::path& path, float size) -> ImFont* {
+        std::error_code ec;
+        if (!path.empty() && std::filesystem::exists(path, ec) && std::filesystem::is_regular_file(path, ec)) {
+            const std::string path_str = path.string();
+            if (ImFont* f = io.Fonts->AddFontFromFileTTF(path_str.c_str(), size)) {
+                core::Logger::info("Loaded UI font ({:.0f}px): {}", size, path_str);
+                return f;
+            }
+        }
+        return nullptr;
+    };
+
+    const std::array<std::filesystem::path, 4> regular_candidates = {
         preferred_font_path,
         std::filesystem::path("C:/Windows/Fonts/segoeui.ttf"),
         std::filesystem::path("C:/Windows/Fonts/consola.ttf"),
         std::filesystem::path("C:/Windows/Fonts/arial.ttf")
     };
-
-    for (const auto& candidate : candidates) {
-        std::error_code ec;
-        if (!candidate.empty() && std::filesystem::exists(candidate, ec) && std::filesystem::is_regular_file(candidate, ec)) {
-            const std::string path_str = candidate.string();
-            ImFont* loaded = io.Fonts->AddFontFromFileTTF(path_str.c_str(), base_size_px);
-            if (loaded != nullptr) {
-                core::Logger::info("Loaded UI font: {}", path_str);
-                return;
-            }
+    for (const auto& candidate : regular_candidates) {
+        if (ImFont* f = try_load(candidate, base_size_px)) {
+            g_fonts.regular = f;
+            break;
         }
     }
 
-    core::Logger::warn("No TTF font found; falling back to default ImGui font.");
-    io.Fonts->AddFontDefault();
+    if (g_fonts.regular == nullptr) {
+        core::Logger::warn("No TTF font found; falling back to default ImGui font.");
+        g_fonts.regular = io.Fonts->AddFontDefault();
+    }
+
+    const std::array<std::filesystem::path, 3> bold_candidates = {
+        std::filesystem::path("C:/Windows/Fonts/segoeuib.ttf"),
+        std::filesystem::path("C:/Windows/Fonts/consolab.ttf"),
+        preferred_font_path
+    };
+    for (const auto& candidate : bold_candidates) {
+        if (ImFont* f = try_load(candidate, base_size_px + 1.0f)) {
+            g_fonts.bold = f;
+            break;
+        }
+    }
+    if (g_fonts.bold == nullptr) {
+        g_fonts.bold = g_fonts.regular;
+    }
+
+    for (const auto& candidate : bold_candidates) {
+        if (ImFont* f = try_load(candidate, 46.0f)) {
+            g_fonts.display = f;
+            break;
+        }
+    }
+    if (g_fonts.display == nullptr) {
+        g_fonts.display = g_fonts.bold;
+    }
 }
 
 } // namespace rps::ui
